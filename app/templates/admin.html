@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Admin Panel</h1>
+    <p><a href="/">← Back to Calendar</a></p>
+
+    <section>
+        <h2>Persons ({{ persons|length }})</h2>
+        <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Color</th><th>KID PIN</th></tr></thead>
+            <tbody>
+            {% for p in persons %}
+            <tr>
+                <td>{{ p.id }}</td>
+                <td>{{ p.name }}</td>
+                <td style="background-color: {{ p.color }}; width: 30px;"></td>
+                <td>{{ p.kid_pin if p.kid_pin is not none else 'N/A' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Categories ({{ categories|length }})</h2>
+        <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Sort Order</th></tr></thead>
+            <tbody>
+            {% for c in categories %}
+            <tr>
+                <td>{{ c.id }}</td>
+                <td>{{ c.name }}</td>
+                <td>{{ c.sort_order }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Tasks ({{ tasks|length }})</h2>
+        <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Default Assignee</th><th>Both?</th></tr></thead>
+            <tbody>
+            {% for t in tasks %}
+            <tr>
+                <td>{{ t.id }}</td>
+                <td>{{ t.name }}</td>
+                <td>{{ t.category.name }}</td>
+                <td>{{ t.default_assignee.name if t.default_assignee else 'None' }}</td>
+                <td>{{ 'Yes' if t.assigned_to_both else 'No' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Events ({{ events|length }})</h2>
+        <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Person</th><th>Day</th><th>Time</th></tr></thead>
+            <tbody>
+            {% for e in events %}
+            <tr>
+                <td>{{ e.id }}</td>
+                <td>{{ e.name }}</td>
+                <td>{{ e.category.name }}</td>
+                <td>{{ e.person.name if e.person else 'Any' }}</td>
+                <td>{{ ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][e.day_of_week] }}</td>
+                <td>{{ e.start_time.strftime('%I:%M %p') }}-{{ e.end_time.strftime('%I:%M %p') }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</body>
+</html>

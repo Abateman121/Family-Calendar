@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Select User</title>
+</head>
+<body>
+    <h2>Select User</h2>
+    <form method="post" action="/select_person">
+        {% for p in persons %}
+        <label style="display: block; margin: 10px;">
+            <input type="radio" name="person_id" value="{{ p.id }}" required>
+            <span style="background-color: {{ p.color }}; padding: 5px 10px; border-radius: 3px;">
+                {{ p.name }}
+            </span>
+        </label>
+        {% endfor %}
+        <button type="submit">Continue</button>
+    </form>
+</body>
+</html>

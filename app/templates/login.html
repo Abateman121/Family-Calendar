@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Parent Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <h2>Parent Login</h2>
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+        <form method="post" action="/login">
+            <label>
+                Parent PIN:
+                <input type="password" name="parent_pin" required>
+            </label>
+            <button type="submit">Login</button>
+        </form>
+        <p>Default PIN: 1234 (set via PARENT_PIN env)</p>
+    </div>
+</body>
+</html>

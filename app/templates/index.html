@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Family Calendar</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Week of {{ monday.strftime('%b %d, %Y') }}</h1>
+            <div class="user-select">
+                <span>Select user:</span>
+                <form id="person-form" action="/person" method="get">
+                    {% for p in persons if p.kid_pin is not none %}
+                    <button type="submit" name="person_id" value="{{ p.id }}" class="person-btn" style="background-color: {{ p.color }};">
+                        {{ p.name[0] }} {{ p.name.split()[-1][0] if p.name.split()|length>1 else '' }}
+                    </button>
+                    {% endfor %}
+                </form>
+                {% if parent_ok %}
+                <a href="/admin" class="admin-link">Admin</a>
+                <form action="/login" method="post" style="display:inline;">
+                    <button type="submit" class="logout-btn">Logout</button>
+                </form>
+                {% else %}
+                <a href="/login" class="login-link">Parent Login</a>
+                {% endif %}
+            </div>
+        </header>
+
+        <main>
+            <table class="week-grid">
+                <thead>
+                    <tr>
+                        <th class="category-col"></th>
+                        {% for d in week_dates %}
+                        <th class="day-header">{{ d.strftime('%a<br>%d')|safe }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for category in categories %}
+                    {% set category_tasks = [t for t in tasks if t.category_id == category.id] %}
+                    {% if category_tasks %}
+                    <tr>
+                        <th class="category-label" rowspan="{{ category_tasks|length }}">{{ category.name }}</th>
+                        {% set first = true %}
+                        {% for task in category_tasks %}
+                        {% if not first %}<tr>{% endif %}
+                        {% for day_idx, day_date in enumerate(week_dates) %}
+                        {% set day_info = task_day_map.get(task.id, {}).get(day_idx) %}
+                        {% set assignee_id = day_info.assignee_person_id if day_info and day_info.assignee_person_id is not none else task.default_assignee_person_id %}
+                        {% set detail = day_info.detail if day_info and day_info.detail is not none else '' %}
+                        {% set is_both = task.assigned_to_both %}
+                        {% set person = persons | selectattr('id', 'equalto', assignee_id) | list %}
+                        {% set assignee_name = person[0].name if person else '' %}
+                        {% set assignee_color = person[0].color if person else '#ccc' %}
+                        <td class="task-cell">
+                            <form method="post" action="/checkoff" class="checkoff-form" data-task-id="{{ task.id }}" data-date="{{ day_date.isoformat() }}">
+                                <input type="hidden" name="task_id" value="{{ task.id }}">
+                                <input type="hidden" name="date" value="{{ day_date.isoformat() }}">
+                                <input type="hidden" name="person_id" value="">
+                                <button type="submit" class="checkoff-btn"
+                                        style="background-color: {{ assignee_color }};"
+                                        title="{{ assignee_name }}{% if detail %}: {{ detail }}{% endif %}"
+                                        {% if (task.id, day_date, person_id) in completion_set %}class="checked"{% endif %}>
+                                    {% if assignee_name %}
+                                    {{ assignee_name[0] }}{% if assignee_name|length>1 %}{{ assignee_name.split()[-1][0] if assignee_name.split()|length>1 else '' }}{% endif %}
+                                    {% endif %}
+                                </button>
+                            </form>
+                        </td>
+                        {% endfor %}
+                        {% if not first %}</tr>{% endif %}
+                        {% set first = false %}
+                        {% endfor %}
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <section class="events">
+                <h2>Events</h2>
+                <table class="event-table">
+                    <thead>
+                        <tr>
+                            <th>Day</th>
+                            <th>Event</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for day_idx, day_date in enumerate(week_dates) %}
+                    {% set events = events_by_day[day_idx] %}
+                    {% if events %}
+                    {% for ev in events %}
+                    <tr>
+                        <td>{{ day_date.strftime('%a') }}</td>
+                        <td>{{ ev.name }}</td>
+                        <td>{{ ev.start_time.strftime('%I:%M %p') }}-{{ ev.end_time.strftime('%I:%M %p') }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr><td colspan="3">No events</td></tr>
+                    {% endif %}
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+    <script>
+        // Helper to get cookie value
+        function getCookie(name) {
+            const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            return match ? match[2] : null;
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            const selectedPersonId = getCookie('selected_person');
+            if (selectedPersonId) {
+                document.querySelectorAll('input[name="person_id"]').forEach(inp => {
+                    inp.value = selectedPersonId;
+                });
+            }
+        });
+    </script>
+</body>
+</html>
