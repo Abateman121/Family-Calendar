@@ -16,4 +16,4 @@ services:
       net.unraid.docker.icon: "/mnt/user/icons/family-calendar.png"
       folder.view2: "family-calendar"
     volumes:
-      - ./data:/app/data
+      - /mnt/cache/appdata/familycalendar:/app/data
