@@ -1,6 +1,6 @@
 services:
   family-calendar:
-    image: ghcr.io/abateman121/family-calendar:v0.0.2
+    image: ghcr.io/abateman121/family-calendar:v0.0.21
     container_name: family-calendar
     restart: unless-stopped
     ports:

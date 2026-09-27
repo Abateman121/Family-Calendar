@@ -7,16 +7,18 @@
 <body>
     <div class="version">v{{ version }}</div>
     <h2>Select User</h2>
-    <form method="post" action="/select_person">
-        {% for p in persons %}
-        <label style="display: block; margin: 10px;">
-            <input type="radio" name="person_id" value="{{ p.id }}" required>
-            <span style="background-color: {{ p.color }}; padding: 5px 10px; border-radius: 3px;">
-                {{ p.name }}
-            </span>
+    {% for p in persons %}
+    <form method="post" action="/verify_pin" style="display: block; margin: 10px;">
+        <input type="hidden" name="person_id" value="{{ p.id }}">
+        <label>
+            PIN:
+            <input type="password" name="pin" inputmode="numeric" maxlength="6" required
+                   style="width: 80px; margin-left: 5px;">
         </label>
-        {% endfor %}
-        <button type="submit">Continue</button>
+        <button type="submit" class="person-btn" style="background-color: {{ p.color }};">
+            {{ p.name[0] }}{% if p.name.split()|length>1 %}{{ p.name.split()[-1][0] }}{% endif %}
+        </button>
     </form>
+    {% endfor %}
 </body>
 </html>

@@ -13,8 +13,8 @@ def seed_database():
         # Check if we already have people
         if db.query(Person).count() == 0:
             # Create persons
-            ethan = Person(name="Ethan", color="#4CAF50", kid_pin=1234)  # Green
-            rose = Person(name="Rose", color="#2196F3", kid_pin=5678)   # Blue
+            ethan = Person(name="Ethan", color="#4CAF50", kid_pin="1234")  # Green
+            rose = Person(name="Rose", color="#2196F3", kid_pin="5678")   # Blue
             dad = Person(name="Dad", color="#FF9800", kid_pin=None)    # Orange, no PIN
             mom = Person(name="Mom", color="#9C27B0", kid_pin=None)    # Purple, no PIN
             db.add_all([ethan, rose, dad, mom])

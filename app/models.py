@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Time, UniqueConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from .database import Base
 import datetime
 
@@ -8,10 +8,17 @@ class Person(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     color = Column(String, nullable=False)  # HTML color code
-    kid_pin = Column(Integer, nullable=True)  # PIN for kid, None for parents/adults?
+    kid_pin = Column(String(6), nullable=True)  # PIN for kid, None for parents/adults? (4-6 digits)
     # Relationships
     task_completions = relationship("TaskCompletion", back_populates="person")
     events = relationship("Event", back_populates="person")
+
+    @validates('kid_pin')
+    def validate_kid_pin(self, key, pin):
+        if pin is not None:
+            if not pin.isdigit() or not (4 <= len(pin) <= 6):
+                raise ValueError("Kid PIN must be 4 to 6 digits")
+        return pin
 
 class Category(Base):
     __tablename__ = "categories"
