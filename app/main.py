@@ -10,6 +10,17 @@ from . import database, models
 app = FastAPI()
 templates = Jinja2Templates(directory="app/templates")
 
+# Read version from VERSION file
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VERSION_PATH = os.path.join(BASE_DIR, "..", "VERSION")
+with open(VERSION_PATH, "r") as f:
+    APP_VERSION = f.read().strip()
+
+def render_template(request: Request, template_name: str, context: dict):
+    """Render a template with the app version injected."""
+    context.setdefault("version", APP_VERSION)
+    return templates.TemplateResponse(template_name, {**context, "request": request})
+
 # Dependency
 def get_db():
     db = database.SessionLocal()
@@ -79,10 +90,10 @@ async def week_view(
     for ev in events:
         events_by_day[ev.day_of_week].append(ev)
 
-    return templates.TemplateResponse(
+    return render_template(
+        request,
         "index.html",
         {
-            "request": request,
             "monday": monday,
             "week_dates": week_dates,
             "persons": persons,
@@ -102,9 +113,10 @@ async def person_selector(request: Request):
         persons = db.query(models.Person).filter(models.Person.kid_pin.isnot(None)).all()
     finally:
         db.close()
-    return templates.TemplateResponse(
+    return render_template(
+        request,
         "person.html",
-        {"request": request, "persons": persons}
+        {"persons": persons}
     )
 
 @app.post("/checkoff")
@@ -155,7 +167,7 @@ async def checkoff_task(
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    return render_template(request, "login.html", {})
 
 @app.post("/login")
 async def login_submit(parent_pin: str = Form(...), response: Response = None):
@@ -164,10 +176,10 @@ async def login_submit(parent_pin: str = Form(...), response: Response = None):
         response.set_cookie(key="parent_auth", value=PARENT_PIN, httponly=True)
         return response
     else:
-        return templates.TemplateResponse(
+        return render_template(
+            request,
             "login.html",
-            {"request": Request({"type": "http"}), "error": "Invalid PIN"},
-            status_code=status.HTTP_400_BAD_REQUEST
+            {"error": "Invalid PIN"},
         )
 
 @app.post("/select_person")
@@ -188,10 +200,10 @@ async def admin_panel(
     categories = db.query(models.Category).all()
     tasks = db.query(models.Task).all()
     events = db.query(models.Event).all()
-    return templates.TemplateResponse(
+    return render_template(
+        request,
         "admin.html",
         {
-            "request": request,
             "persons": persons,
             "categories": categories,
             "tasks": tasks,

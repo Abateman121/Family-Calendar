@@ -164,3 +164,9 @@ header h1 {
 .admin-link {
     background-color: #ff9800;
 }
+
+.version {
+    font-size: 0.9em;
+    color: #666;
+    margin-bottom: 8px;
+}
