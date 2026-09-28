@@ -31,6 +31,15 @@ def get_db():
 def init_db():
     """Run migrations to bring the database up to date."""
     from alembic import config, command
+    logger.info("Loading Alembic config")
     # Get the path to the alembic.ini file
     alembic_cfg = config.Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
-    command.upgrade(alembic_cfg, "head")
+    logger.info("Alembic config loaded")
+    logger.info("Running upgrade to head")
+    try:
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Upgrade completed successfully")
+    except Exception as e:
+        logger.error(f"Error during upgrade: {e}")
+        logger.error(f"Exception type: {type(e)}")
+        raise
