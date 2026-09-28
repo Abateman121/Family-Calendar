@@ -10,10 +10,18 @@
     <h1>Admin Panel</h1>
     <p><a href="/">← Back to Calendar</a></p>
 
+    <nav>
+        <a href="/admin/people">Manage People</a> |
+        <a href="/admin/categories">Manage Categories</a> |
+        <a href="/admin/tasks">Manage Tasks</a> |
+        <a href="/admin/events">Manage Events</a>
+    </nav>
+
     <section>
         <h2>Persons ({{ persons|length }})</h2>
+        <p><a href="/admin/people/new">Add New Person</a></p>
         <table>
-            <thead><tr><th>ID</th><th>Name</th><th>Color</th><th>KID PIN</th></tr></thead>
+            <thead><tr><th>ID</th><th>Name</th><th>Color</th><th>KID PIN</th><th>Actions</th></tr></thead>
             <tbody>
             {% for p in persons %}
             <tr>
@@ -21,6 +29,12 @@
                 <td>{{ p.name }}</td>
                 <td style="background-color: {{ p.color }}; width: 30px;"></td>
                 <td>{{ p.kid_pin if p.kid_pin is not none else 'N/A' }}</td>
+                <td>
+                    <a href="/admin/people/{{ p.id }}/edit">Edit</a> |
+                    <form action="/admin/people/{{ p.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this person?');">
+                        <button type="submit">Delete</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
             </tbody>
@@ -29,14 +43,21 @@
 
     <section>
         <h2>Categories ({{ categories|length }})</h2>
+        <p><a href="/admin/categories/new">Add New Category</a></p>
         <table>
-            <thead><tr><th>ID</th><th>Name</th><th>Sort Order</th></tr></thead>
+            <thead><tr><th>ID</th><th>Name</th><th>Sort Order</th><th>Actions</th></tr></thead>
             <tbody>
             {% for c in categories %}
             <tr>
                 <td>{{ c.id }}</td>
                 <td>{{ c.name }}</td>
                 <td>{{ c.sort_order }}</td>
+                <td>
+                    <a href="/admin/categories/{{ c.id }}/edit">Edit</a> |
+                    <form action="/admin/categories/{{ c.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this category?');">
+                        <button type="submit">Delete</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
             </tbody>
@@ -45,8 +66,9 @@
 
     <section>
         <h2>Tasks ({{ tasks|length }})</h2>
+        <p><a href="/admin/tasks/new">Add New Task</a></p>
         <table>
-            <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Default Assignee</th><th>Both?</th></tr></thead>
+            <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Default Assignee</th><th>Both?</th><th>Actions</th></tr></thead>
             <tbody>
             {% for t in tasks %}
             <tr>
@@ -55,6 +77,12 @@
                 <td>{{ t.category.name }}</td>
                 <td>{{ t.default_assignee.name if t.default_assignee else 'None' }}</td>
                 <td>{{ 'Yes' if t.assigned_to_both else 'No' }}</td>
+                <td>
+                    <a href="/admin/tasks/{{ t.id }}/edit">Edit</a> |
+                    <form action="/admin/tasks/{{ t.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this task?');">
+                        <button type="submit">Delete</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
             </tbody>
@@ -63,8 +91,9 @@
 
     <section>
         <h2>Events ({{ events|length }})</h2>
+        <p><a href="/admin/events/new">Add New Event</a></p>
         <table>
-            <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Person</th><th>Day</th><th>Time</th></tr></thead>
+            <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Person</th><th>Day</th><th>Time</th><th>Actions</th></tr></thead>
             <tbody>
             {% for e in events %}
             <tr>
@@ -74,6 +103,12 @@
                 <td>{{ e.person.name if e.person else 'Any' }}</td>
                 <td>{{ ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][e.day_of_week] }}</td>
                 <td>{{ e.start_time.strftime('%I:%M %p') }}-{{ e.end_time.strftime('%I:%M %p') }}</td>
+                <td>
+                    <a href="/admin/events/{{ e.id }}/edit">Edit</a> |
+                    <form action="/admin/events/{{ e.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this event?');">
+                        <button type="submit">Delete</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
             </tbody>

@@ -346,4 +346,437 @@ async def admin_panel(
         }
     )
 
-# Additional CRUD routes can be added later...
+# People CRUD
+@app.get("/admin/people", response_class=HTMLResponse)
+async def admin_people_list(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    persons = db.query(models.Person).order_by(models.Person.name).all()
+    return render_template(
+        request,
+        "admin_people_list.html",
+        {"persons": persons}
+    )
+
+@app.get("/admin/people/new", response_class=HTMLResponse)
+async def admin_people_new_form(request: Request, parent_ok: bool = Depends(get_parent_auth)):
+    return render_template(
+        request,
+        "admin_people_form.html",
+        {"person": None, "action": "/admin/people", "method": "post"}
+    )
+
+@app.post("/admin/people", response_class=HTMLResponse)
+async def admin_people_create(
+    request: Request,
+    parent_ok: bool = Depends(get_parent_auth),
+    name: str = Form(...),
+    color: str = Form(...),
+    kid_pin: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    # Validate color format (simple hex check)
+    if not color.startswith('#') or len(color) != 7:
+        raise HTTPException(status_code=400, detail="Invalid color format")
+    # Validate kid_pin if provided
+    if kid_pin is not None:
+        if not kid_pin.isdigit() or not (4 <= len(kid_pin) <= 6):
+            raise HTTPException(status_code=400, detail="Kid PIN must be 4 to 6 digits")
+    person = models.Person(name=name, color=color, kid_pin=kid_pin)
+    db.add(person)
+    db.commit()
+    return RedirectResponse(url="/admin/people", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/admin/people/{person_id}/edit", response_class=HTMLResponse)
+async def admin_people_edit_form(
+    request: Request,
+    person_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    db: Session = Depends(get_db)
+):
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return render_template(
+        request,
+        "admin_people_form.html",
+        {"person": person, "action": f"/admin/people/{person_id}", "method": "post"}
+    )
+
+@app.post("/admin/people/{person_id}", response_class=HTMLResponse)
+async def admin_people_update(
+    request: Request,
+    person_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    name: str = Form(...),
+    color: str = Form(...),
+    kid_pin: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    # Validate color format
+    if not color.startswith('#') or len(color) != 7:
+        raise HTTPException(status_code=400, detail="Invalid color format")
+    # Validate kid_pin if provided
+    if kid_pin is not None:
+        if not kid_pin.isdigit() or not (4 <= len(kid_pin) <= 6):
+            raise HTTPException(status_code=400, detail="Kid PIN must be 4 to 6 digits")
+    person.name = name
+    person.color = color
+    person.kid_pin = kid_pin
+    db.commit()
+    return RedirectResponse(url="/admin/people", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/admin/people/{person_id}/delete", response_class=HTMLResponse)
+async def admin_people_delete(
+    request: Request,
+    person_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    db: Session = Depends(get_db)
+):
+    person = db.query(models.Person).filter(models.Person.id == person_id).first()
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    # Check if person has any task completions or events
+    if db.query(models.TaskCompletion).filter(models.TaskCompletion.person_id == person_id).first() or \
+       db.query(models.Event).filter(models.Event.person_id == person_id).first():
+        raise HTTPException(status_code=400, detail="Cannot delete person with associated tasks or events")
+    db.delete(person)
+    db.commit()
+    return RedirectResponse(url="/admin/people", status_code=status.HTTP_303_SEE_OTHER)
+
+# Categories CRUD
+@app.get("/admin/categories", response_class=HTMLResponse)
+async def admin_categories_list(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    categories = db.query(models.Category).order_by(models.Category.sort_order).all()
+    return render_template(
+        request,
+        "admin_categories_list.html",
+        {"categories": categories}
+    )
+
+@app.get("/admin/categories/new", response_class=HTMLResponse)
+async def admin_categories_new_form(request: Request, parent_ok: bool = Depends(get_parent_auth)):
+    return render_template(
+        request,
+        "admin_categories_form.html",
+        {"category": None, "action": "/admin/categories", "method": "post"}
+    )
+
+@app.post("/admin/categories", response_class=HTMLResponse)
+async def admin_categories_create(
+    request: Request,
+    parent_ok: bool = Depends(get_parent_auth),
+    name: str = Form(...),
+    sort_order: int = Form(...),
+    db: Session = Depends(get_db)
+):
+    category = models.Category(name=name, sort_order=sort_order)
+    db.add(category)
+    db.commit()
+    return RedirectResponse(url="/admin/categories", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/admin/categories/{category_id}/edit", response_class=HTMLResponse)
+async def admin_categories_edit_form(
+    request: Request,
+    category_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    db: Session = Depends(get_db)
+):
+    category = db.query(models.Category).filter(models.Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return render_template(
+        request,
+        "admin_categories_form.html",
+        {"category": category, "action": f"/admin/categories/{category_id}", "method": "post"}
+    )
+
+@app.post("/admin/categories/{category_id}", response_class=HTMLResponse)
+async def admin_categories_update(
+    request: Request,
+    category_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    name: str = Form(...),
+    sort_order: int = Form(...),
+    db: Session = Depends(get_db)
+):
+    category = db.query(models.Category).filter(models.Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    category.name = name
+    category.sort_order = sort_order
+    db.commit()
+    return RedirectResponse(url="/admin/categories", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/admin/categories/{category_id}/delete", response_class=HTMLResponse)
+async def admin_categories_delete(
+    request: Request,
+    category_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    db: Session = Depends(get_db)
+):
+    category = db.query(models.Category).filter(models.Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+    # Check if category has any tasks or events
+    if db.query(models.Task).filter(models.Task.category_id == category_id).first() or \
+       db.query(models.Event).filter(models.Event.category_id == category_id).first():
+        raise HTTPException(status_code=400, detail="Cannot delete category with associated tasks or events")
+    db.delete(category)
+    db.commit()
+    return RedirectResponse(url="/admin/categories", status_code=status.HTTP_303_SEE_OTHER)
+
+# Tasks CRUD
+@app.get("/admin/tasks", response_class=HTMLResponse)
+async def admin_tasks_list(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    tasks = db.query(models.Task).options(
+        selectinload(models.Task.category),
+        selectinload(models.Task.default_assignee)
+    ).all()
+    return render_template(
+        request,
+        "admin_tasks_list.html",
+        {"tasks": tasks}
+    )
+
+@app.get("/admin/tasks/new", response_class=HTMLResponse)
+async def admin_tasks_new_form(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    categories = db.query(models.Category).order_by(models.Category.sort_order).all()
+    persons = db.query(models.Person).order_by(models.Person.name).all()
+    return render_template(
+        request,
+        "admin_tasks_form.html",
+        {"task": None, "categories": categories, "persons": persons, "action": "/admin/tasks", "method": "post"}
+    )
+
+@app.post("/admin/tasks", response_class=HTMLResponse)
+async def admin_tasks_create(
+    request: Request,
+    parent_ok: bool = Depends(get_parent_auth),
+    name: str = Form(...),
+    category_id: int = Form(...),
+    default_assignee_person_id: Optional[str] = Form(None),
+    assigned_to_both: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    # Validate assigned_to_both
+    assigned_to_both_bool = assigned_to_both.lower() == 'true'
+    # Convert default_assignee_person_id to int if provided, else None
+    default_assignee_id = int(default_assignee_person_id) if default_assignee_person_id else None
+    task = models.Task(
+        name=name,
+        category_id=category_id,
+        default_assignee_person_id=default_assignee_id,
+        assigned_to_both=assigned_to_both_bool
+    )
+    db.add(task)
+    db.commit()
+    return RedirectResponse(url="/admin/tasks", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/admin/tasks/{task_id}/edit", response_class=HTMLResponse)
+async def admin_tasks_edit_form(
+    request: Request,
+    task_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    db: Session = Depends(get_db)
+):
+    task = db.query(models.Task).options(
+        selectinload(models.Task.category),
+        selectinload(models.Task.default_assignee),
+        selectinload(models.Task.days)
+    ).filter(models.Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    categories = db.query(models.Category).order_by(models.Category.sort_order).all()
+    persons = db.query(models.Person).order_by(models.Person.name).all()
+    # Prepare days data for the form (for each day of week)
+    days_data = {day.day_of_week: {"assignee_person_id": day.assignee_person_id, "detail": day.detail} for day in task.days}
+    return render_template(
+        request,
+        "admin_tasks_form.html",
+        {
+            "task": task,
+            "categories": categories,
+            "persons": persons,
+            "days_data": days_data,
+            "action": f"/admin/tasks/{task_id}",
+            "method": "post"
+        }
+    )
+
+@app.post("/admin/tasks/{task_id}", response_class=HTMLResponse)
+async def admin_tasks_update(
+    request: Request,
+    task_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    name: str = Form(...),
+    category_id: int = Form(...),
+    default_assignee_person_id: Optional[str] = Form(None),
+    assigned_to_both: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    # Validate assigned_to_both
+    assigned_to_both_bool = assigned_to_both.lower() == 'true'
+    # Convert default_assignee_person_id to int if provided, else None
+    default_assignee_id = int(default_assignee_person_id) if default_assignee_person_id else None
+    task.name = name
+    task.category_id = category_id
+    task.default_assignee_person_id = default_assignee_id
+    task.assigned_to_both = assigned_to_both_bool
+    db.commit()
+    return RedirectResponse(url="/admin/tasks", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/admin/tasks/{task_id}/delete", response_class=HTMLResponse)
+async def admin_tasks_delete(
+    request: Request,
+    task_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    db: Session = Depends(get_db)
+):
+    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    # Check if task has any completions
+    if db.query(models.TaskCompletion).filter(models.TaskCompletion.task_id == task_id).first():
+        raise HTTPException(status_code=400, detail="Cannot delete task with associated completions")
+    db.delete(task)
+    db.commit()
+    return RedirectResponse(url="/admin/tasks", status_code=status.HTTP_303_SEE_OTHER)
+
+# Events CRUD
+@app.get("/admin/events", response_class=HTMLResponse)
+async def admin_events_list(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    events = db.query(models.Event).options(
+        selectinload(models.Event.category),
+        selectinload(models.Event.person)
+    ).all()
+    return render_template(
+        request,
+        "admin_events_list.html",
+        {"events": events}
+    )
+
+@app.get("/admin/events/new", response_class=HTMLResponse)
+async def admin_events_new_form(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    categories = db.query(models.Category).order_by(models.Category.sort_order).all()
+    persons = db.query(models.Person).order_by(models.Person.name).all()
+    return render_template(
+        request,
+        "admin_events_form.html",
+        {"event": None, "categories": categories, "persons": persons, "action": "/admin/events", "method": "post"}
+    )
+
+@app.post("/admin/events", response_class=HTMLResponse)
+async def admin_events_create(
+    request: Request,
+    parent_ok: bool = Depends(get_parent_auth),
+    name: str = Form(...),
+    category_id: int = Form(...),
+    person_id: Optional[str] = Form(None),
+    day_of_week: int = Form(...),
+    start_time: str = Form(...),  # HH:MM format
+    end_time: str = Form(...),    # HH:MM format
+    db: Session = Depends(get_db)
+):
+    # Convert person_id to int if provided, else None
+    person_id_val = int(person_id) if person_id else None
+    # Parse times
+    try:
+        start_time_obj = datetime.time.fromisoformat(start_time)
+        end_time_obj = datetime.time.fromisoformat(end_time)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
+    event = models.Event(
+        name=name,
+        category_id=category_id,
+        person_id=person_id_val,
+        day_of_week=day_of_week,
+        start_time=start_time_obj,
+        end_time=end_time_obj
+    )
+    db.add(event)
+    db.commit()
+    return RedirectResponse(url="/admin/events", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.get("/admin/events/{event_id}/edit", response_class=HTMLResponse)
+async def admin_events_edit_form(
+    request: Request,
+    event_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    db: Session = Depends(get_db)
+):
+    event = db.query(models.Event).options(
+        selectinload(models.Event.category),
+        selectinload(models.Event.person)
+    ).filter(models.Event.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    categories = db.query(models.Category).order_by(models.Category.sort_order).all()
+    persons = db.query(models.Person).order_by(models.Person.name).all()
+    # Format times for the form (HH:MM)
+    start_time_str = event.start_time.strftime("%H:%M")
+    end_time_str = event.end_time.strftime("%H:%M")
+    return render_template(
+        request,
+        "admin_events_form.html",
+        {
+            "event": event,
+            "categories": categories,
+            "persons": persons,
+            "start_time": start_time_str,
+            "end_time": end_time_str,
+            "action": f"/admin/events/{event_id}",
+            "method": "post"
+        }
+    )
+
+@app.post("/admin/events/{event_id}", response_class=HTMLResponse)
+async def admin_events_update(
+    request: Request,
+    event_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    name: str = Form(...),
+    category_id: int = Form(...),
+    person_id: Optional[str] = Form(None),
+    day_of_week: int = Form(...),
+    start_time: str = Form(...),
+    end_time: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    event = db.query(models.Event).filter(models.Event.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    # Convert person_id to int if provided, else None
+    person_id_val = int(person_id) if person_id else None
+    # Parse times
+    try:
+        start_time_obj = datetime.time.fromisoformat(start_time)
+        end_time_obj = datetime.time.fromisoformat(end_time)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
+    event.name = name
+    event.category_id = category_id
+    event.person_id = person_id_val
+    event.day_of_week = day_of_week
+    event.start_time = start_time_obj
+    event.end_time = end_time_obj
+    db.commit()
+    return RedirectResponse(url="/admin/events", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/admin/events/{event_id}/delete", response_class=HTMLResponse)
+async def admin_events_delete(
+    request: Request,
+    event_id: int,
+    parent_ok: bool = Depends(get_parent_auth),
+    db: Session = Depends(get_db)
+):
+    event = db.query(models.Event).filter(models.Event.id == event_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    db.delete(event)
+    db.commit()
+    return RedirectResponse(url="/admin/events", status_code=status.HTTP_303_SEE_OTHER)

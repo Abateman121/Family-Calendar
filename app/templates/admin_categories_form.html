@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if category %}Edit Category{% else %}Add New Category{% endif %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="version">v{{ version }}</div>
+    <h1>{% if category %}Edit Category{% else %}Add New Category{% endif %}</h1>
+    <p><a href="/admin/categories">← Back to Categories List</a></p>
+    <form method="{{ method }}" action="{{ action }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div>
+            <label for="name">Name:</label>
+            <input type="text" id="name" name="name" value="{{ category.name if category else '' }}" required>
+        </div>
+        <div>
+            <label for="sort_order">Sort Order (lower numbers appear first):</label>
+            <input type="number" id="sort_order" name="sort_order" value="{{ category.sort_order if category else 0 }}" required>
+        </div>
+        <div>
+            <button type="submit">Save Category</button>
+        </div>
+    </form>
+</body>
+</html>

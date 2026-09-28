@@ -62,11 +62,11 @@
                             <form method="post" action="/checkoff" class="checkoff-form" data-task-id="{{ task.id }}" data-date="{{ day_date.isoformat() }}">
                                 <input type="hidden" name="task_id" value="{{ task.id }}">
                                 <input type="hidden" name="date" value="{{ day_date.isoformat() }}">
-                                <input type="hidden" name="person_id" value="">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" class="checkoff-btn"
                                         style="background-color: {{ assignee_color }};"
                                         title="{{ assignee_name }}{% if detail %}: {{ detail }}{% endif %}"
-                                        {% if (task.id, day_date, person_id) in completion_set %}class="checked"{% endif %}>
+                                        {% if (task.id, day_date) in completed_set %}class="checked"{% endif %}>
                                     {% if assignee_name %}
                                     {{ assignee_name[0] }}{% if assignee_name|length>1 %}{{ assignee_name.split()[-1][0] if assignee_name.split()|length>1 else '' }}{% endif %}
                                     {% endif %}

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if person %}Edit Person{% else %}Add New Person{% endif %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="version">v{{ version }}</div>
+    <h1>{% if person %}Edit Person{% else %}Add New Person{% endif %}</h1>
+    <p><a href="/admin/people">← Back to People List</a></p>
+    <form method="{{ method }}" action="{{ action }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div>
+            <label for="name">Name:</label>
+            <input type="text" id="name" name="name" value="{{ person.name if person else '' }}" required>
+        </div>
+        <div>
+            <label for="color">Color (HTML hex code):</label>
+            <input type="text" id="color" name="color" value="{{ person.color if person else '#cccccc' }}" pattern="^#[0-9A-Fa-f]{6}$" required>
+            <small>Format: #RRGGBB (e.g., #FF0000 for red)</small>
+        </div>
+        <div>
+            <label for="kid_pin">Kid PIN (4-6 digits, leave blank for adults):</label>
+            <input type="text" id="kid_pin" name="kid_pin" value="{{ person.kid_pin if person else '' }}" inputmode="numeric" maxlength="6">
+            <small>Leave blank for non-kids (parents/adults)</small>
+        </div>
+        <div>
+            <button type="submit">Save Person</button>
+        </div>
+    </form>
+</body>
+</html>

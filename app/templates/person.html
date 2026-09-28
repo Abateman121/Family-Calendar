@@ -9,6 +9,7 @@
     <h2>Select User</h2>
     {% for p in persons %}
     <form method="post" action="/verify_pin" style="display: block; margin: 10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="person_id" value="{{ p.id }}">
         <label>
             PIN:

@@ -13,6 +13,7 @@
         <p class="error">{{ error }}</p>
         {% endif %}
         <form method="post" action="/login">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label>
                 Parent PIN:
                 <input type="password" name="parent_pin" required>

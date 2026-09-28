@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if task %}Edit Task{% else %}Add New Task{% endif %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .days-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .days-table th, .days-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        .days-table th {
+            background-color: #f0f0f0;
+        }
+        .day-name {
+            width: 60px;
+        }
+        .assignee-col {
+            width: 150px;
+        }
+        .detail-col {
+            width: 200px;
+        }
+        input[type="text"] {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        select {
+            width: 100%;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="version">v{{ version }}</div>
+    <h1>{% if task %}Edit Task{% else %}Add New Task{% endif %}</h1>
+    <p><a href="/admin/tasks">← Back to Tasks List</a></p>
+    <form method="{{ method }}" action="{{ action }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div>
+            <label for="name">Task Name:</label>
+            <input type="text" id="name" name="name" value="{{ task.name if task else '' }}" required>
+        </div>
+        <div>
+            <label for="category_id">Category:</label>
+            <select id="category_id" name="category_id" required>
+                <option value="">-- Select Category --</option>
+                {% for category in categories %}
+                <option value="{{ category.id }}" {% if task and task.category_id == category.id %}selected{% endif %}>
+                    {{ category.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="default_assignee_person_id">Default Assignee (for persons, leave blank for None):</label>
+            <select id="default_assignee_person_id" name="default_assignee_person_id">
+                <option value="">-- None (use per-day overrides or leave blank) --</option>
+                {% for person in persons %}
+                <option value="{{ person.id }}" {% if task and task.default_assignee_person_id == person.id %}selected{% endif %}>
+                    {{ person.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="assigned_to_both">Assigned to Both Kids:</label>
+            <input type="checkbox" id="assigned_to_both" name="assigned_to_both" value="true" {% if task and task.assigned_to_both %}checked{% endif %}>
+        </div>
+        <table class="days-table">
+            <thead>
+                <tr>
+                    <th class="day-name">Day</th>
+                    <th class="assignee-col">Assignee Override</th>
+                    <th class="detail-col">Detail Override</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for day_idx, day_name in [('Mon',0), ('Tue',1), ('Wed',2), ('Thu',3), ('Fri',4), ('Sat',5), ('Sun',6)] %}
+                <tr>
+                    <td class="day-name">{{ day_name }}</td>
+                    <td class="assignee-col">
+                        <select name="day_{{ day_idx }}_assignee">
+                            <option value="">-- None (use default assignee) --</option>
+                            {% for person in persons %}
+                            <option value="{{ person.id }}" {% if days_data and days_data[day_idx] and days_data[day_idx].assignee_person_id == person.id %}selected{% endif %}>
+                                {{ person.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="detail-col">
+                        <input type="text" name="day_{{ day_idx }}_detail" value="{{ days_data and days_data[day_idx] and days_data[day_idx].detail or '' }}">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div>
+            <button type="submit">Save Task</button>
+        </div>
+    </form>
+</body>
+</html>

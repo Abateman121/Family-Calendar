@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% if event %}Edit Event{% else %}Add New Event{% endif %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="version">v{{ version }}</div>
+    <h1>{% if event %}Edit Event{% else %}Add New Event{% endif %}</h1>
+    <p><a href="/admin/events">← Back to Events List</a></p>
+    <form method="{{ method }}" action="{{ action }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div>
+            <label for="name">Event Name:</label>
+            <input type="text" id="name" name="name" value="{{ event.name if event else '' }}" required>
+        </div
+```markdown
+```markdown
+        <div>
+            <label for="category_id">Category:</label>
+            <select id="category_id" name="category_id" required>
+                <option value="">-- Select Category --</option>
+                {% for category in categories %}
+                <option value="{{ category.id }}" {% if event and event.category_id == category.id %}selected{% endif %}>
+                    {{ category.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="person_id">Person (optional):</label>
+            <select id="person_id" name="person_id">
+                <option value="">-- None --</option>
+                {% for person in persons %}
+                <option value="{{ person.id }}" {% if event and event.person_id == person.id %}selected{% endif %}>
+                    {{ person.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="day_of_week">Day of Week:</label>
+            <select id="day_of_week" name="day_of_week" required>
+                <option value="0" {% if event and event.day_of_week == 0 %}selected{% endif %}>Monday</option>
+                <option value="1" {% if event and event.day_of_week == 1 %}selected{% endif %}>Tuesday</option>
+                <option value="2" {% if event and event.day_of_week == 2 %}selected{% endif %}>Wednesday</option>
+                <option value="3" {% if event and event.day_of_week == 3 %}selected{% endif %}>Thursday</option>
+                <option value="4" {% if event and event.day_of_week == 4 %}selected{% endif %}>Friday</option>
+                <option value="5" {% if event and event.day_of_week == 5 %}selected{% endif %}>Saturday</option>
+                <option value="6" {% if event and event.day_of_week == 6 %}selected{% endif %}>Sunday</option>
+            </select>
+        </div>
+        <div>
+            <label for="start_time">Start Time (HH:MM):</label>
+            <input type="time" id="start_time" name="start_time" value="{{ event.start_time.strftime('%H:%M') if event else '09:00' }}" required>
+        </div>
+        <div>
+            <label for="end_time">End Time (HH:MM):</label>
+            <input type="time" id="end_time" name="end_time" value="{{ event.end_time.strftime('%H:%M') if event else '17:00' }}" required>
+        </div>
+        <div>
+            <button type="submit">Save Event</button>
+        </div>
+    </form>
+</body>
+</html>
+```
