@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import NullPool
 import os
 
 # Database URL - SQLite file in data directory
@@ -13,6 +14,7 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False},  # Needed for SQLite
     echo=False,
+    poolclass=NullPool,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
