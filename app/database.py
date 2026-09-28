@@ -2,6 +2,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import NullPool
 import os
+import logging
+
+logger = logging.getLogger('app')
 
 # Database URL - SQLite file in data directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
