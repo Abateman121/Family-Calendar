@@ -1,3 +1,5 @@
+import logging
+import logging.config
 import os
 import datetime
 import secrets
@@ -9,7 +11,49 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session, selectinload
 from . import database, models
 
+# Logging configuration
+LOGGING_CONFIG = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        },
+    },
+    'handlers': {
+        'default': {
+            'level': 'INFO',
+            'formatter': 'standard',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        '': {  # root logger
+            'handlers': ['default'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'app': {
+            'handlers': ['default'],
+            'level': 'INFO',
+            'propagate': False
+        },
+        'uvicorn.error': {
+            'level': 'INFO'
+        },
+        'uvicorn.access': {
+            'level': 'INFO',
+            'handlers': ['default'],
+            'propagate': False
+        },
+    }
+}
+
+logging.config.dictConfig(LOGGING_CONFIG)
+logger = logging.getLogger('app')
+
 app = FastAPI()
+logger.info("Starting Family Chore & Activity Board application")
 # Add session middleware with a secret key (should be from env in production)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY", secrets.token_hex(32)))
 
@@ -74,11 +118,20 @@ def csrf_protect(request: Request):
         if not token or token != request.session.get("csrf_token"):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token missing or invalid")
 
+@app.on_event("startup")
+async def startup_event():
+    """Run database migrations on startup."""
+    logger.info("Running database migrations on startup")
+    from .database import init_db
+    init_db()
+    logger.info("Database migrations completed")
+
 @app.get("/", response_class=HTMLResponse)
 async def week_view(
     request: Request,
     db: Session = Depends(get_db)
 ):
+    logger.debug("Rendering week view")
     monday = get_current_monday()
     week_dates = get_week_dates(monday)
     # Fetch data with eager loading to avoid N+1
@@ -160,6 +213,7 @@ async def week_view(
         events_by_day[ev.day_of_week].append(ev)
 
     parent_ok = request.session.get("parent_authenticated", False)
+    logger.debug("Rendering week view with %d persons, %d categories, %d tasks, %d events", len(persons), len(categories), len(tasks), len(events))
     return render_template(
         request,
         "index.html",
@@ -178,6 +232,7 @@ async def week_view(
 
 @app.get("/person", response_class=HTMLResponse)
 async def person_selector(request: Request):
+    logger.debug("Rendering person selector")
     db = database.SessionLocal()
     try:
         persons = db.query(models.Person).filter(models.Person.kid_pin.isnot(None)).all()
@@ -191,13 +246,16 @@ async def person_selector(request: Request):
 
 @app.post("/verify_pin")
 async def verify_pin(request: Request, person_id: int = Form(...), pin: str = Form(...)):
+    logger.info("PIN verification attempt for person_id=%s", person_id)
     db = database.SessionLocal()
     try:
         person = db.query(models.Person).filter(models.Person.id == person_id).first()
         if not person or person.kid_pin is None or not secrets.compare_digest(person.kid_pin, pin):
             # For security, use constant-time comparison
+            logger.warning("Failed PIN verification for person_id=%s", person_id)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid PIN")
         # Successful verification
+        logger.info("Successful PIN verification for person_id=%s", person_id)
         request.session["authenticated_person_id"] = person.id
         # Set a cookie for client-side JS to know the selected person (not secret)
         response = RedirectResponse(url=request.headers.get("referer") or "/", status_code=status.HTTP_303_SEE_OTHER)
@@ -213,15 +271,22 @@ async def checkoff_task(
     date_str: str = Form(...),  # YYYY-MM-DD
     db: Session = Depends(get_db)
 ):
+    logger.info("Checkoff attempt for task_id=%s, date=%s", task_id, date_str)
     # Determine person_id from session (must be authenticated via PIN)
     person_id = request.session.get("authenticated_person_id")
     if person_id is None:
+        logger.warning("Checkoff attempt without person authentication")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Person not authenticated via PIN")
     # Verify task exists
     task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not task:
+        logger.warning("Checkoff attempt for non-existent task_id=%s", task_id)
         raise HTTPException(status_code=404, detail="Task not found")
-    date_obj = datetime.date.fromisoformat(date_str)
+    try:
+        date_obj = datetime.date.fromisoformat(date_str)
+    except ValueError:
+        logger.warning("Invalid date format for checkoff: %s", date_str)
+        raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD")
     # Get day override for this task/date
     day_override = None
     for day in task.days:
@@ -243,13 +308,16 @@ async def checkoff_task(
     # For non-Both tasks, ensure the authenticated person matches the effective assignee
     if not is_both:
         if eff_assignee_id is None:
+            logger.warning("Task %s has no assignee", task_id)
             raise HTTPException(status_code=400, detail="Task has no assignee")
         if person_id != eff_assignee_id:
-            raise HTTPException(status_code=403, detail="Authenticated person does not match task assignee")
+            logger.warning("Person %s is not the assignee for task %s", person_id, task_id)
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authenticated person does not match task assignee")
     # For Both tasks, any authenticated kid can tap (all-or-nothing)
     if is_both:
         kid_ids = get_kid_ids(db)
         if not kid_ids:
+            logger.warning("No kids defined for Both task checkoff")
             raise HTTPException(status_code=400, detail="No kids defined")
         # Determine current completion state for this task-date across all kids
         existing = db.query(models.TaskCompletion).filter(
@@ -260,6 +328,7 @@ async def checkoff_task(
         existing_ids = {c.person_id for c in existing}
         if existing_ids:
             # There are existing completions -> uncheck (delete all)
+            logger.info("Unchecking Both task %s for date %s (existing completions for persons: %s)", task_id, date_obj, existing_ids)
             db.query(models.TaskCompletion).filter(
                 models.TaskCompletion.task_id == task_id,
                 models.TaskCompletion.date == date_obj,
@@ -268,6 +337,7 @@ async def checkoff_task(
             action = "unchecked"
         else:
             # No existing completions -> check (insert all)
+            logger.info("Checking Both task %s for date %s for all kids: %s", task_id, date_obj, kid_ids)
             for kid_id in kid_ids:
                 completion = models.TaskCompletion(
                     task_id=task_id,
@@ -285,10 +355,12 @@ async def checkoff_task(
             models.TaskCompletion.person_id == person_id
         ).first()
         if existing:
+            logger.info("Unchecking task %s for person %s on date %s", task_id, person_id, date_obj)
             db.delete(existing)
             db.commit()
             action = "unchecked"
         else:
+            logger.info("Checking task %s for person %s on date %s", task_id, person_id, date_obj)
             completion = models.TaskCompletion(
                 task_id=task_id,
                 date=date_obj,
@@ -300,19 +372,24 @@ async def checkoff_task(
             action = "checked"
     # Redirect back to referring page or home
     referer = request.headers.get("referer") or "/"
+    logger.info("Checkoff completed: %s for task %s, date %s", action, task_id, date_obj)
     return RedirectResponse(url=referer, status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request):
+    logger.debug("Rendering login form")
     return render_template(request, "login.html", {})
 
 @app.post("/login")
 async def login_submit(parent_pin: str = Form(...), response: Response = None):
+    logger.info("Login attempt with parent PIN")
     if parent_pin == PARENT_PIN:
+        logger.info("Successful parent login")
         response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
         response.set_cookie(key="parent_auth", value=PARENT_PIN, httponly=True)
         return response
     else:
+        logger.warning("Failed parent login attempt")
         return render_template(
             request,
             "login.html",
@@ -329,7 +406,9 @@ async def admin_panel(
     db: Session = Depends(get_db)
 ):
     if not parent_ok:
+        logger.warning("Unauthorized attempt to access admin panel")
         return RedirectResponse(url="/login")
+    logger.debug("Rendering admin panel")
     persons = db.query(models.Person).all()
     categories = db.query(models.Category).all()
     tasks = db.query(models.Task).all()
@@ -349,6 +428,7 @@ async def admin_panel(
 # People CRUD
 @app.get("/admin/people", response_class=HTMLResponse)
 async def admin_people_list(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    logger.debug("Rendering people list")
     persons = db.query(models.Person).order_by(models.Person.name).all()
     return render_template(
         request,
@@ -358,13 +438,14 @@ async def admin_people_list(request: Request, parent_ok: bool = Depends(get_pare
 
 @app.get("/admin/people/new", response_class=HTMLResponse)
 async def admin_people_new_form(request: Request, parent_ok: bool = Depends(get_parent_auth)):
+    logger.debug("Rendering new person form")
     return render_template(
         request,
         "admin_people_form.html",
         {"person": None, "action": "/admin/people", "method": "post"}
     )
 
-@app.post("/admin/people", response_class=HTMLResponse)
+@app.post("/admin/people", response_class=Response)
 async def admin_people_create(
     request: Request,
     parent_ok: bool = Depends(get_parent_auth),
@@ -373,16 +454,20 @@ async def admin_people_create(
     kid_pin: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
+    logger.info("Creating new person: %s", name)
     # Validate color format (simple hex check)
     if not color.startswith('#') or len(color) != 7:
+        logger.warning("Invalid color format: %s", color)
         raise HTTPException(status_code=400, detail="Invalid color format")
     # Validate kid_pin if provided
     if kid_pin is not None:
         if not kid_pin.isdigit() or not (4 <= len(kid_pin) <= 6):
+            logger.warning("Invalid kid PIN: %s", kid_pin)
             raise HTTPException(status_code=400, detail="Kid PIN must be 4 to 6 digits")
     person = models.Person(name=name, color=color, kid_pin=kid_pin)
     db.add(person)
     db.commit()
+    logger.info("Created person with id=%s", person.id)
     return RedirectResponse(url="/admin/people", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/admin/people/{person_id}/edit", response_class=HTMLResponse)
@@ -392,8 +477,10 @@ async def admin_people_edit_form(
     parent_ok: bool = Depends(get_parent_auth),
     db: Session = Depends(get_db)
 ):
+    logger.debug("Rendering edit form for person_id=%s", person_id)
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if not person:
+        logger.warning("Person not found for edit: %s", person_id)
         raise HTTPException(status_code=404, detail="Person not found")
     return render_template(
         request,
@@ -401,7 +488,7 @@ async def admin_people_edit_form(
         {"person": person, "action": f"/admin/people/{person_id}", "method": "post"}
     )
 
-@app.post("/admin/people/{person_id}", response_class=HTMLResponse)
+@app.post("/admin/people/{person_id}", response_class=Response)
 async def admin_people_update(
     request: Request,
     person_id: int,
@@ -411,43 +498,53 @@ async def admin_people_update(
     kid_pin: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
+    logger.info("Updating person_id=%s with name=%s", person_id, name)
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if not person:
+        logger.warning("Person not found for update: %s", person_id)
         raise HTTPException(status_code=404, detail="Person not found")
     # Validate color format
     if not color.startswith('#') or len(color) != 7:
+        logger.warning("Invalid color format: %s", color)
         raise HTTPException(status_code=400, detail="Invalid color format")
     # Validate kid_pin if provided
     if kid_pin is not None:
         if not kid_pin.isdigit() or not (4 <= len(kid_pin) <= 6):
+            logger.warning("Invalid kid PIN: %s", kid_pin)
             raise HTTPException(status_code=400, detail="Kid PIN must be 4 to 6 digits")
     person.name = name
     person.color = color
     person.kid_pin = kid_pin
     db.commit()
+    logger.info("Updated person_id=%s", person_id)
     return RedirectResponse(url="/admin/people", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/admin/people/{person_id}/delete", response_class=HTMLResponse)
+@app.post("/admin/people/{person_id}/delete", response_class=Response)
 async def admin_people_delete(
     request: Request,
     person_id: int,
     parent_ok: bool = Depends(get_parent_auth),
     db: Session = Depends(get_db)
 ):
+    logger.info("Deleting person_id=%s", person_id)
     person = db.query(models.Person).filter(models.Person.id == person_id).first()
     if not person:
+        logger.warning("Person not found for deletion: %s", person_id)
         raise HTTPException(status_code=404, detail="Person not found")
     # Check if person has any task completions or events
     if db.query(models.TaskCompletion).filter(models.TaskCompletion.person_id == person_id).first() or \
        db.query(models.Event).filter(models.Event.person_id == person_id).first():
+        logger.warning("Cannot delete person_id=%s because they have associated tasks or events", person_id)
         raise HTTPException(status_code=400, detail="Cannot delete person with associated tasks or events")
     db.delete(person)
     db.commit()
+    logger.info("Deleted person_id=%s", person_id)
     return RedirectResponse(url="/admin/people", status_code=status.HTTP_303_SEE_OTHER)
 
 # Categories CRUD
 @app.get("/admin/categories", response_class=HTMLResponse)
 async def admin_categories_list(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    logger.debug("Rendering categories list")
     categories = db.query(models.Category).order_by(models.Category.sort_order).all()
     return render_template(
         request,
@@ -457,13 +554,14 @@ async def admin_categories_list(request: Request, parent_ok: bool = Depends(get_
 
 @app.get("/admin/categories/new", response_class=HTMLResponse)
 async def admin_categories_new_form(request: Request, parent_ok: bool = Depends(get_parent_auth)):
+    logger.debug("Rendering new category form")
     return render_template(
         request,
         "admin_categories_form.html",
         {"category": None, "action": "/admin/categories", "method": "post"}
     )
 
-@app.post("/admin/categories", response_class=HTMLResponse)
+@app.post("/admin/categories", response_class=Response)
 async def admin_categories_create(
     request: Request,
     parent_ok: bool = Depends(get_parent_auth),
@@ -471,9 +569,11 @@ async def admin_categories_create(
     sort_order: int = Form(...),
     db: Session = Depends(get_db)
 ):
+    logger.info("Creating new category: %s", name)
     category = models.Category(name=name, sort_order=sort_order)
     db.add(category)
     db.commit()
+    logger.info("Created category with id=%s", category.id)
     return RedirectResponse(url="/admin/categories", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/admin/categories/{category_id}/edit", response_class=HTMLResponse)
@@ -483,8 +583,10 @@ async def admin_categories_edit_form(
     parent_ok: bool = Depends(get_parent_auth),
     db: Session = Depends(get_db)
 ):
+    logger.debug("Rendering edit form for category_id=%s", category_id)
     category = db.query(models.Category).filter(models.Category.id == category_id).first()
     if not category:
+        logger.warning("Category not found for edit: %s", category_id)
         raise HTTPException(status_code=404, detail="Category not found")
     return render_template(
         request,
@@ -492,7 +594,7 @@ async def admin_categories_edit_form(
         {"category": category, "action": f"/admin/categories/{category_id}", "method": "post"}
     )
 
-@app.post("/admin/categories/{category_id}", response_class=HTMLResponse)
+@app.post("/admin/categories/{category_id}", response_class=Response)
 async def admin_categories_update(
     request: Request,
     category_id: int,
@@ -501,35 +603,43 @@ async def admin_categories_update(
     sort_order: int = Form(...),
     db: Session = Depends(get_db)
 ):
+    logger.info("Updating category_id=%s with name=%s", category_id, name)
     category = db.query(models.Category).filter(models.Category.id == category_id).first()
     if not category:
+        logger.warning("Category not found for update: %s", category_id)
         raise HTTPException(status_code=404, detail="Category not found")
     category.name = name
     category.sort_order = sort_order
     db.commit()
+    logger.info("Updated category_id=%s", category_id)
     return RedirectResponse(url="/admin/categories", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/admin/categories/{category_id}/delete", response_class=HTMLResponse)
+@app.post("/admin/categories/{category_id}/delete", response_class=Response)
 async def admin_categories_delete(
     request: Request,
     category_id: int,
     parent_ok: bool = Depends(get_parent_auth),
     db: Session = Depends(get_db)
 ):
+    logger.info("Deleting category_id=%s", category_id)
     category = db.query(models.Category).filter(models.Category.id == category_id).first()
     if not category:
+        logger.warning("Category not found for deletion: %s", category_id)
         raise HTTPException(status_code=404, detail="Category not found")
     # Check if category has any tasks or events
     if db.query(models.Task).filter(models.Task.category_id == category_id).first() or \
        db.query(models.Event).filter(models.Event.category_id == category_id).first():
+        logger.warning("Cannot delete category_id=%s because they have associated tasks or events", category_id)
         raise HTTPException(status_code=400, detail="Cannot delete category with associated tasks or events")
     db.delete(category)
     db.commit()
+    logger.info("Deleted category_id=%s", category_id)
     return RedirectResponse(url="/admin/categories", status_code=status.HTTP_303_SEE_OTHER)
 
 # Tasks CRUD
 @app.get("/admin/tasks", response_class=HTMLResponse)
 async def admin_tasks_list(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    logger.debug("Rendering tasks list")
     tasks = db.query(models.Task).options(
         selectinload(models.Task.category),
         selectinload(models.Task.default_assignee)
@@ -542,6 +652,7 @@ async def admin_tasks_list(request: Request, parent_ok: bool = Depends(get_paren
 
 @app.get("/admin/tasks/new", response_class=HTMLResponse)
 async def admin_tasks_new_form(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    logger.debug("Rendering new task form")
     categories = db.query(models.Category).order_by(models.Category.sort_order).all()
     persons = db.query(models.Person).order_by(models.Person.name).all()
     return render_template(
@@ -550,7 +661,7 @@ async def admin_tasks_new_form(request: Request, parent_ok: bool = Depends(get_p
         {"task": None, "categories": categories, "persons": persons, "action": "/admin/tasks", "method": "post"}
     )
 
-@app.post("/admin/tasks", response_class=HTMLResponse)
+@app.post("/admin/tasks", response_class=Response)
 async def admin_tasks_create(
     request: Request,
     parent_ok: bool = Depends(get_parent_auth),
@@ -560,6 +671,7 @@ async def admin_tasks_create(
     assigned_to_both: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    logger.info("Creating new task: %s", name)
     # Validate assigned_to_both
     assigned_to_both_bool = assigned_to_both.lower() == 'true'
     # Convert default_assignee_person_id to int if provided, else None
@@ -572,6 +684,7 @@ async def admin_tasks_create(
     )
     db.add(task)
     db.commit()
+    logger.info("Created task with id=%s", task.id)
     return RedirectResponse(url="/admin/tasks", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/admin/tasks/{task_id}/edit", response_class=HTMLResponse)
@@ -581,12 +694,14 @@ async def admin_tasks_edit_form(
     parent_ok: bool = Depends(get_parent_auth),
     db: Session = Depends(get_db)
 ):
+    logger.debug("Rendering edit form for task_id=%s", task_id)
     task = db.query(models.Task).options(
         selectinload(models.Task.category),
         selectinload(models.Task.default_assignee),
         selectinload(models.Task.days)
     ).filter(models.Task.id == task_id).first()
     if not task:
+        logger.warning("Task not found for edit: %s", task_id)
         raise HTTPException(status_code=404, detail="Task not found")
     categories = db.query(models.Category).order_by(models.Category.sort_order).all()
     persons = db.query(models.Person).order_by(models.Person.name).all()
@@ -605,7 +720,7 @@ async def admin_tasks_edit_form(
         }
     )
 
-@app.post("/admin/tasks/{task_id}", response_class=HTMLResponse)
+@app.post("/admin/tasks/{task_id}", response_class=Response)
 async def admin_tasks_update(
     request: Request,
     task_id: int,
@@ -616,8 +731,10 @@ async def admin_tasks_update(
     assigned_to_both: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    logger.info("Updating task_id=%s with name=%s", task_id, name)
     task = db.query(models.Task).filter(models.Task.id == task_id).first()
     if not task:
+        logger.warning("Task not found for update: %s", task_id)
         raise HTTPException(status_code=404, detail="Task not found")
     # Validate assigned_to_both
     assigned_to_both_bool = assigned_to_both.lower() == 'true'
@@ -628,28 +745,34 @@ async def admin_tasks_update(
     task.default_assignee_person_id = default_assignee_id
     task.assigned_to_both = assigned_to_both_bool
     db.commit()
+    logger.info("Updated task_id=%s", task_id)
     return RedirectResponse(url="/admin/tasks", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/admin/tasks/{task_id}/delete", response_class=HTMLResponse)
+@app.post("/admin/tasks/{task_id}/delete", response_class=Response)
 async def admin_tasks_delete(
     request: Request,
     task_id: int,
     parent_ok: bool = Depends(get_parent_auth),
     db: Session = Depends(get_db)
 ):
-    task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    logger.info("Deleting task_id=%s", task_id)
+    task = db.query(models.Task).filter(models.Task.task_id == task_id).first()
     if not task:
+        logger.warning("Task not found for deletion: %s", task_id)
         raise HTTPException(status_code=404, detail="Task not found")
     # Check if task has any completions
     if db.query(models.TaskCompletion).filter(models.TaskCompletion.task_id == task_id).first():
+        logger.warning("Cannot delete task_id=%s because they have associated completions", task_id)
         raise HTTPException(status_code=400, detail="Cannot delete task with associated completions")
     db.delete(task)
     db.commit()
+    logger.info("Deleted task_id=%s", task_id)
     return RedirectResponse(url="/admin/tasks", status_code=status.HTTP_303_SEE_OTHER)
 
 # Events CRUD
 @app.get("/admin/events", response_class=HTMLResponse)
 async def admin_events_list(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    logger.debug("Rendering events list")
     events = db.query(models.Event).options(
         selectinload(models.Event.category),
         selectinload(models.Event.person)
@@ -662,6 +785,7 @@ async def admin_events_list(request: Request, parent_ok: bool = Depends(get_pare
 
 @app.get("/admin/events/new", response_class=HTMLResponse)
 async def admin_events_new_form(request: Request, parent_ok: bool = Depends(get_parent_auth), db: Session = Depends(get_db)):
+    logger.debug("Rendering new event form")
     categories = db.query(models.Category).order_by(models.Category.sort_order).all()
     persons = db.query(models.Person).order_by(models.Person.name).all()
     return render_template(
@@ -670,7 +794,7 @@ async def admin_events_new_form(request: Request, parent_ok: bool = Depends(get_
         {"event": None, "categories": categories, "persons": persons, "action": "/admin/events", "method": "post"}
     )
 
-@app.post("/admin/events", response_class=HTMLResponse)
+@app.post("/admin/events", response_class=Response)
 async def admin_events_create(
     request: Request,
     parent_ok: bool = Depends(get_parent_auth),
@@ -682,6 +806,7 @@ async def admin_events_create(
     end_time: str = Form(...),    # HH:MM format
     db: Session = Depends(get_db)
 ):
+    logger.info("Creating new event: %s", name)
     # Convert person_id to int if provided, else None
     person_id_val = int(person_id) if person_id else None
     # Parse times
@@ -689,6 +814,7 @@ async def admin_events_create(
         start_time_obj = datetime.time.fromisoformat(start_time)
         end_time_obj = datetime.time.fromisoformat(end_time)
     except ValueError:
+        logger.warning("Invalid time format for event: %s-%s", start_time, end_time)
         raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
     event = models.Event(
         name=name,
@@ -700,6 +826,7 @@ async def admin_events_create(
     )
     db.add(event)
     db.commit()
+    logger.info("Created event with id=%s", event.id)
     return RedirectResponse(url="/admin/events", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/admin/events/{event_id}/edit", response_class=HTMLResponse)
@@ -709,11 +836,13 @@ async def admin_events_edit_form(
     parent_ok: bool = Depends(get_parent_auth),
     db: Session = Depends(get_db)
 ):
+    logger.debug("Rendering edit form for event_id=%s", event_id)
     event = db.query(models.Event).options(
         selectinload(models.Event.category),
         selectinload(models.Event.person)
     ).filter(models.Event.id == event_id).first()
     if not event:
+        logger.warning("Event not found for edit: %s", event_id)
         raise HTTPException(status_code=404, detail="Event not found")
     categories = db.query(models.Category).order_by(models.Category.sort_order).all()
     persons = db.query(models.Person).order_by(models.Person.name).all()
@@ -734,7 +863,7 @@ async def admin_events_edit_form(
         }
     )
 
-@app.post("/admin/events/{event_id}", response_class=HTMLResponse)
+@app.post("/admin/events/{event_id}", response_class=Response)
 async def admin_events_update(
     request: Request,
     event_id: int,
@@ -747,8 +876,10 @@ async def admin_events_update(
     end_time: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    logger.info("Updating event_id=%s with name=%s", event_id, name)
     event = db.query(models.Event).filter(models.Event.id == event_id).first()
     if not event:
+        logger.warning("Event not found for update: %s", event_id)
         raise HTTPException(status_code=404, detail="Event not found")
     # Convert person_id to int if provided, else None
     person_id_val = int(person_id) if person_id else None
@@ -757,6 +888,7 @@ async def admin_events_update(
         start_time_obj = datetime.time.fromisoformat(start_time)
         end_time_obj = datetime.time.fromisoformat(end_time)
     except ValueError:
+        logger.warning("Invalid time format for event: %s-%s", start_time, end_time)
         raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
     event.name = name
     event.category_id = category_id
@@ -765,18 +897,22 @@ async def admin_events_update(
     event.start_time = start_time_obj
     event.end_time = end_time_obj
     db.commit()
+    logger.info("Updated event_id=%s", event_id)
     return RedirectResponse(url="/admin/events", status_code=status.HTTP_303_SEE_OTHER)
 
-@app.post("/admin/events/{event_id}/delete", response_class=HTMLResponse)
+@app.post("/admin/events/{event_id}/delete", response_class=Response)
 async def admin_events_delete(
     request: Request,
     event_id: int,
     parent_ok: bool = Depends(get_parent_auth),
     db: Session = Depends(get_db)
 ):
+    logger.info("Deleting event_id=%s", event_id)
     event = db.query(models.Event).filter(models.Event.id == event_id).first()
     if not event:
+        logger.warning("Event not found for deletion: %s", event_id)
         raise HTTPException(status_code=404, detail="Event not found")
     db.delete(event)
     db.commit()
+    logger.info("Deleted event_id=%s", event_id)
     return RedirectResponse(url="/admin/events", status_code=status.HTTP_303_SEE_OTHER)

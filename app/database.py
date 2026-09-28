@@ -27,5 +27,8 @@ def get_db():
         db.close()
 
 def init_db():
-    """Create tables if they don't exist."""
-    Base.metadata.create_all(bind=engine)
+    """Run migrations to bring the database up to date."""
+    from alembic import config, command
+    # Get the path to the alembic.ini file
+    alembic_cfg = config.Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
+    command.upgrade(alembic_cfg, "head")

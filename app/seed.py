@@ -1,12 +1,11 @@
-from .database import SessionLocal, engine
+from .database import SessionLocal, init_db
 from .models import Person, Category, Task, TaskDay, TaskCompletion, Event
 import datetime
 
 def seed_database():
     """Seed initial data if tables are empty."""
-    # Create tables if not exist
-    from .database import Base
-    Base.metadata.create_all(bind=engine)
+    # Run migrations to ensure tables exist
+    init_db()
 
     db = SessionLocal()
     try:

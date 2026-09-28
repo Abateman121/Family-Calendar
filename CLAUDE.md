@@ -19,9 +19,11 @@ off when done. Sports/activities are just displayed, not checkable.
 
 - **FastAPI** (async web framework)
 - **SQLAlchemy 2.x** ORM with **SQLite** (file at `data/family.db`)
+- **Alembic** for database migrations
 - **Jinja2** templates (server-rendered HTML, no JS framework)
 - **SessionMiddleware** (Starlette) for the parent PIN session, if/when
   parent-only editing is added
+- **Logging** (Python standard logging) for structured application logs
 - **Docker** for deployment (`Dockerfile` + `docker-compose.yml`), deployed
   on Tower (Unraid, 10.40.2.11) alongside the rest of the homelab stack
 
@@ -30,9 +32,9 @@ off when done. Sports/activities are just displayed, not checkable.
 ```
 app/
   main.py          # ALL routes live here
-  database.py      # engine, SessionLocal, get_db, init_db
+  database.py      # engine, SessionLocal, get_db, init_db (runs migrations)
   models.py        # SQLAlchemy tables
-  seed.py          # example data on empty DB
+  seed.py          # example data on empty DB (runs migrations then seeds)
   static/          # style.css, app.js, icons/
   templates/       # Jinja2 pages
 ```
@@ -184,8 +186,8 @@ approach covers both:
 
 - Docker: `docker compose up -d --build` then http://localhost:8000
 - Local: `pip install -r requirements.txt && uvicorn app.main:app --reload`
-- First start auto-creates `data/family.db` and seeds people, categories,
-  and example tasks matching the current physical board.
+- First start runs Alembic migrations to create/upgrade the database,
+  then seeds initial data if the database is empty.
 
 ## Docker Compose standards (match existing Tower stacks)
 
@@ -227,3 +229,13 @@ calendar app and show up on the board automatically. When picked up:
   events aren't accidentally hand-edited and overwritten on next sync.
 - Sync approach (pull on a schedule vs. on page load) is an open question
   for when this is actually built — don't design it prematurely now.
+
+## Testing
+
+The project includes automated test coverage:
+- Unit tests for model relationships (`tests/test_models.py`)
+- Integration tests for key routes (`/checkoff`, `/login`) (`tests/test_routes.py`)
+- Tests are run with `pytest` and require the test dependencies in
+  `requirements.txt`.
+
+To run tests: `pytest` or `python -m pytest`
