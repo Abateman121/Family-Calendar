@@ -11,6 +11,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "..", "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 SQLITE_DB_PATH = os.path.join(DATA_DIR, "family.db")
+SQLITE_DB_PATH = os.path.normpath(SQLITE_DB_PATH)
 DATABASE_URL = f"sqlite:///{SQLITE_DB_PATH}"
 
 engine = create_engine(

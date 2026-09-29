@@ -23,6 +23,7 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from app.database import DATABASE_URL, Base
+from app import models  # Import models to ensure they're registered with Base.metadata
 
 target_metadata = Base.metadata
 
